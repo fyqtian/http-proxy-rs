@@ -12,6 +12,7 @@
 //!
 //! Example is based on <https://github.com/hyperium/hyper/blob/master/examples/http_proxy.rs>
 
+use anyhow::anyhow;
 use axum::{
     body::Body,
     extract::Request,
@@ -20,11 +21,11 @@ use axum::{
     routing::get,
     Router,
 };
-use std::collections::HashMap;
-
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::upgrade::Upgraded;
+use std::collections::HashMap;
+use std::io::Read;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 use tower::Service;
@@ -43,9 +44,18 @@ async fn main() {
             if req.method() == Method::CONNECT {
                 proxy(req).await
             } else {
-                let resp = reqwest::get(req.uri().to_string()).await?;
+                let resp = reqwest::get(req.uri().to_string()).await;
+                if resp.is_err() {
+                    return Ok(Response::new(Body::empty()));
+                }
+                let resp = resp.unwrap();
                 println!("{resp:#?}");
-                Ok(Response::new(Body::from("Hello, World!")))
+                let body = resp.bytes().await;
+                if body.is_err() {
+                    return Ok(Response::new(Body::empty()));
+                }
+                let rs = Response::new(Body::from(body.unwrap()));
+                Ok(Response::new(rs.into_body()))
             }
         }
     });
